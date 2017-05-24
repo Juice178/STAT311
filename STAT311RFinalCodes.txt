@@ -1,0 +1,495 @@
+d1=read.table("student-mat.csv",sep=";",header=TRUE)
+
+
+Numdata<-model.matrix(~.+0,data=d1) #Convert Categorical to Numeric data
+numdata<-as.data.frame(Numdata) #Make Numeric Matrix into datafram for ease of use
+scldata<-scale(numdata, scale=TRUE) #Create Scaled Data just incase 
+scldata<-as.data.frame(scldata)
+
+
+plot(d1 [,26:33])
+
+ind <- sample(1:nrow(d1), 197) ##Make a Training and Testing Set for original data
+d1train <- d1[ind,]
+d1test <- d1[-ind,]
+
+ind2 <- sample(1:nrow(numdata), 197) ##make a Training and Testing Set for Numerical dataframe
+numtrain <- numdata[ind2,]
+numtest <- numdata[-ind2,]
+
+
+#Factor analysis
+
+#references 
+#http://www.statpower.net/Content/312/R%20Stuff/Exploratory%20Factor%20Analysis%20with%20R.pdf
+#http://www.uni-kiel.de/psychologie/rexrepos/posts/multFA.html
+
+firstData=myvars[c(-1,-2,-4,-5,-6,-9,-10,-11,-12,-c(16:23))]##drop categrical variables
+firstData=na.omit(firstData)
+firstData=scale(firstData)
+
+
+library(psych)
+library(GPArotation)
+
+par(mfrow=c(1,1))
+fa.parallel(firstData)#Determine number of factors=5
+
+fit.3=factanal(firstData, factors=3, scores="regression")##significant-pavalue(null hypotheisis can be rejected)
+fit.4=factanal(firstData, factors=4, scores="regression")##significant-pavalue(null hypotheisis can be rejected)
+fit.5=factanal(firstData, factors=5, scores="regression")##significant-pavalue(null hypotheisis can be rejected)
+fit.6=factanal(firstData, factors=6, scores="regression")##high-pvalue(null hypotheisis cannot be rejected)
+print(fit.5, digits = 2, cutoff = .2, sort = TRUE)# hide small loadings,reduce the number to 2,sort the laodings
+print(fit.6, digits = 2, cutoff = .2, sort = TRUE)
+ 
+colnames(fit.5$loadings)<-c("previousGrades","alcoholConsumption","Parent's education","gender$alcohol","freetime with friedns") 
+print(loadings(fit.5), digits = 2, cutoff = .2, sort = TRUE) 
+
+
+fit.5.promax <- update(fit.5,rotation="promax")##obtain an oblique promax solution by using the option rotation = promax
+colnames(fit.5.promax$loadings)<-c("previousGrades","alcoholConsumption","Parent's education","gender$alcohol","freetime with friedns") 
+print(loadings(fit.5.promax), digits = 2, cutoff = .2, sort = TRUE) 
+
+
+##Arrificial nuetralnetwork  
+##reference  http://www.r-bloggers.com/fitting-a-neural-network-in-r-neuralnet-package/
+
+d1=read.table("student-mat.csv",sep=";",header=TRUE)
+numericData=d1[-c(1:2,4:6,9:12,16:23)]##drop categrical variables
+apply(numericData,2,function(x) sum(is.na(x)))
+dim(numericData)
+set.seed(3)
+index <- sample(1:nrow(numericData), round(0.75*nrow(numericData)))
+train <- (numericData)[index,]
+test <-numericData[-index,]
+lm.fit <- glm(G3~., data=train)
+
+summary(lm.fit)
+pr.lm <- predict(lm.fit,test)
+MSE.lm <- sum((pr.lm - test$G3)^2)/nrow(test)##compute test MSE
+MSE.lm 
+
+maxs <- apply(numericData, 2, max) ##Scale the data
+mins <- apply(numericData, 2, min)
+dim(train);dim(test)
+scaled <- as.data.frame(scale(numericData, center = mins, scale = maxs - mins))
+
+train_ <- scaled[index,]
+test_ <- scaled[-index,]
+
+library(neuralnet)
+?neuralnet
+n <- names(train_)
+f <- as.formula(paste("G3~", paste(n[!n %in% "G3"], collapse = " + ")))
+nn <- neuralnet(f,data=train_,hidden=c(5,3),linear.output=T)##the two hidden layers have 5 and 3 neurons respectively 
+plot(nn)
+dim(numericData)
+
+##Scale back the data
+pr.nn <- compute(nn,test_[,1:15])##number of variables(1:15)
+pr.nn_ <- pr.nn$net.result*(max(numericData$G3)-min(numericData$G3))+min(numericData$G3)
+test.r <- (test_$G3)*(max(numericData$G3)-min(numericData$G3))+min(numericData$G3)
+MSE.nn <- sum((test.r - pr.nn_)^2)/nrow(test_)
+print(paste(MSE.lm,MSE.nn))
+
+
+##Plot the two function lm model and NN. Since this is a simulated data set, it is possible to generate true underlying relationship
+par(mfrow=c(1,2))
+
+plot(test$G3,pr.nn_,col='red',main='True relationship vs predicted NN',pch=18,cex=1.3)
+length(test$G3);length(pr.nn_)
+abline(0,1,lwd=2)
+legend('bottomright',legend='NN',pch=18,col='red', bty='n')
+
+plot(test$G3,pr.lm,col='blue',main='True relationship vs predicted lm',pch=18, cex=1.3)
+abline(0,1,lwd=2)
+legend('bottomright',legend='LM',pch=18,col='blue', bty='n', cex=1.3)
+length(test$G3);length(pr.lm)
+
+par(mfrow=c(1,1))
+plot(test$G3,pr.nn_,col='red',main='True relationship vs predicted NN&lm',pch=18,cex=1.3)
+points(test$G3,pr.lm,col='blue',pch=18,cex=1.3)
+abline(0,1,lwd=2)
+legend('bottomright',legend=c('NN','LM'),pch=18,col=c('red','blue'))##It seems that NN is centerned around the linel than lnn is;line wsuggesting a MSE of 0 and thus a flawless prediction
+
+#10 folds cross-validation;Since test MSE might hugely depend on data split(high variance),use 10 fold cross-valdiation to estiamte the average testMSE
+library(boot)
+set.seed(200)
+lm.fit <- glm(G3~.,data=numericData)
+cv.glm(numericData,lm.fit,K=10)$delta[1]
+
+set.seed(450)
+cv.error <- NULL
+k <- 10
+library(plyr) 
+pbar <- create_progress_bar('text')
+pbar$init(k)
+
+for(i in 1:k){
+  index <- sample(1:nrow(numericData),round(0.9*nrow(numericData)))
+  train.cv <- scaled[index,]
+  test.cv <- scaled[-index,]
+  
+  nn <- neuralnet(f,data=train.cv,hidden=c(5,2),linear.output=T)
+  
+  pr.nn <- compute(nn,test.cv[,1:15])
+  pr.nn <- pr.nn$net.result*(max(numericData$G3)-min(numericData$G3))+min(numericData$G3)
+  
+  test.cv.r <- (test.cv$G3)*(max(numericData$G3)-min(numericData$G3))+min(numericData$G3)
+  
+  cv.error[i] <- sum((test.cv.r - pr.nn)^2)/nrow(test.cv)
+  
+  pbar$step()
+}
+
+mean(cv.error)
+cv.error
+
+boxplot(cv.error,xlab='MSE CV',col='cyan',
+        border='blue',names='CV error (MSE)',
+        main='CV error (MSE) for NN',horizontal=TRUE)
+        
+        
+##Multiple Regression________________________________________________________________##
+
+Multreg<-lm(G3~ .,data=d1)
+
+plot(Multreg)
+
+summary(Multreg)
+
+ML<-lm(G3~ .,data=d1train)
+yhat <- predict(ML, data=train[,-33])
+MSE1 <- mean((yhat-d1test[,33])^2);
+MSE1
+sqrt(MSE1)
+
+
+##Regression diagnostics(http://www.statmethods.net/stats/rdiagnostics.html)
+# Assessing Outliers
+library(car)
+outlierTest(Multreg) # Bonferonni p-value for most extreme obs ##Bonferroni Outlier Test(P<0.05 seems outliers)
+leveragePlots(Multreg) # leverage plot
+plot(hatvalues(Multreg))
+
+highLeverage=hatvalues(Multreg)>(33+1)/395 ## suspectfucl high leverage(greater than (p+1)/n) 
+highLeverage=sum(highLeverage==TRUE)
+Leverage=(highLeverage==TRUE)
+outlier=outlierTest(Multreg)
+highLeverage
+
+highLeverage/395*100##Percentage of doutful high leverage points
+which.max(hatvalues(Multreg))
+##Outlier&&suspectful high leverage points
+library(VennDiagram)
+outlier=outlierTest(Multreg)
+outlier=c(342,265,141,335,317,297)
+highLeverage=hatvalues(Multreg)>(33+1)/395 ## suspectfucl high leverage(greater than (p+1)/n) 
+Leverage=(highLeverage==TRUE)
+Leverage=which(Leverage)
+overlap=calculate.overlap(x=list("outlier"=outlier,"levearge"=Leverage))
+overlap
+##Variance Inflation Factors
+vif(Multreg)
+
+# Evaluate Nonlinearity
+# component + residual plot 
+crPlots(Multreg)
+
+#Non-constant Error Variance
+# Evaluate homoscedasticity
+# non-constant error variance test
+ncvTest(Multreg)
+# plot studentized residuals vs. fitted values 
+spreadLevelPlot(Multreg)
+?spreadLevelPlot
+##best selection
+library(leaps)
+k=10
+set.seed (1)
+folds=sample(1:k,nrow(d1),replace=TRUE)
+cv.errors=matrix(NA,k,19, dimnames=list(NULL, paste(1:19)))
+for(j in 1:k){
+  best.fit=regsubsets(G3~.,data=d1[folds!=j,],nvmax=19)
+  for(i in 1:19){
+    pred=predict(best.fit,d1[folds==j,],id=i)
+    cv.erros[j,i]=mean((d1$G3[folds==j]-pred)^2)
+    }
+}
+
+
+##Ridge regression
+table(cuthc, d1$gradesplit)
+library(glmnet)
+ x <- model.matrix(G3~., data=d1)
+ y <- d1$G3
+ set.seed(1)
+ train=sample(1:nrow(d1),nrow(d1)/2)
+ test=(-train)
+ y.test=y[test]
+ grid <- 10^seq(10, -2, length=100)
+ cv.out <- cv.glmnet(x, y, alpha=0, lambda=grid)
+ plot(cv.out)
+ best=cv.out$lambda.min
+ bestlam=cv.out$lambda.min
+ bestlam
+
+ ridge.mod=glmnet(x[train,],y[train],alpha=0,lambda=grid, thresh =1e-12)
+ ridge.pred=predict(ridge.mod,s=bestlam ,newx=x[test,])
+ mean((ridge.pred-y.test)^2)##> mean((ridge.pred-y.test)^2)=4.36844
+ out=glmnet(x,y,alpha=0)
+ predict(out,type="coefficients",s=bestlam)[1:ncol(d1),]
+
+##The lasso
+lasso.mod=glmnet(x[train ,],y[train],alpha=1,lambda=grid)
+plot(lasso.mod)
+set.seed (1)
+cv.out=cv.glmnet(x[train ,],y[train],alpha=1)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+lasso.pred=predict(lasso.mod,s=bestlam ,newx=x[test,])
+mean((lasso.pred-y.test)^2)##testMSE=4.006323
+summary(lasso.pred)
+out=glmnet(x,y,alpha=1,lambda=grid)
+lasso.coef=predict(out,type="coefficients",s=bestlam)[1:ncol(d1),] 
+lasso.coef
+lasso.coef[lasso.coef!=0]
+length(lasso.coef)
+
+ncol(d1)
+names((lasso.coef))
+##Forward and Backward Stepwise Selection
+regfit.full=regsubsets(G3~.,data=d1 ,nvmax=19)##full
+regfit.fwd=regsubsets(G3~.,data=d1,nvmax=19, method ="forward")
+summary(regfit.fwd)
+regfit.bwd=regsubsets(G3~.,data=d1,nvmax=19,
+                        method ="backward") 
+summary(regfit.bwd)
+regfit.seq=regsubsets(G3~.,data=d1,nvmax=19,
+                      method ="seqrep")
+summary(regfit.seq)
+regfit.ex=regsubsets(G3~.,data=d1,nvmax=19,
+                      method ="exhaustive")
+coef(regfit.full ,7)##full model
+coef(regfit.fwd ,7)##forward selection
+coef(regfit.bwd ,7)##backward selection
+coef(regfit.seq,7)##sequential replacement
+coef(regfit.ex,7)##exhaustive search
+
+
+#HierarchicalClsutering___________________________________________________________________##
+
+myvars=remove.vars(d1,c("G3"),info=TRUE)##Remove responses(G3) from d1 data in order to conduct unsupervised learning
+
+secondData=myvars[-c(9:12)]#keep binary(dummy)variables remain and drop other categorical variables 
+names(secondData)
+secondData=na.omit(secondData)
+numericData=sapply(secondData,as.numeric)
+
+hc.complete=hclust(dist(numericData), method="complete")
+plot(hc.complete,main="Complete Linkage", xlab="", sub="", cex =.9)##Unscaled data
+cuthc <- cutree(hc.complete,2)
+table(cuthc, d1$gradesplit)
+scaled=scale(numericData, scale = TRUE)##Scale data
+hc.complete2=hclust(dist(scaled), method="complete")
+plot(hclust(dist(scaled), method="complete"), main="Hierarchical Clustering with Scaled Features ")##Scaled data
+cuthc <- cutree(hc.complete2,2)
+table(cuthc, d1$gradesplit)
+185/nrow(d1)
+
+##(Correlation-based distance)
+dd=as.dist(1-cor(t(scaled)))
+plot(hclust(dd, method="complete"), main="Complete Linkage
+     with Correlation -Based Distance", xlab="", sub="")
+     
+     
+##Linear Discriminant Analysis_______________________________________________________________##
+attach(d1)
+d1$gradesplit[G3 > 10] <- "Pass"
+d1$gradesplit[G3 <= 10] <- "Fail"
+detach(d1)
+
+##Cross validation LDA _______________________________________###
+set.seed(2)
+ldacv <- lda(gradesplit~.,dI, CV=TRUE)
+table(d1[,34], ldacv$class)
+45/nrow(d1)
+##Qda with cv
+library(MASS)
+set.seed(2)
+qdacv = qda(gradesplit~.,dI,CV=TRUE)
+table(d1[,34], qdacv$class)
+(55+38)/nrow(d1)
+##Logistic Regression_____________________________________________________________________________##
+
+attach(d1)
+d1$gradesplit[G3 > 10] <- "1"
+d1$gradesplit[G3 <= 10] <- "2"
+detach(d1)
+d1$gradesplit<-as.numeric(d1$gradesplit)
+round(cor(d1$G1,d1$G2, use = "complete.obs", method = "pearson"), digits = 2)##high correlation
+logmod <- glm(d1$gradesplit ~ .,data=d1[,-(32:33)], family=binomial)##due to its high correlation,remove the G1 and G2
+summary(logmod)
+table(predict(logmod, type="response") >.5, d1$gradesplit)
+39/nrow(d1)
+names(d1)
+
+
+##K-Nearest Neighbors Regression__________________________________________________________________##
+plot(d1$G3)
+
+knnr<-knn.reg(d1$failures,y=d1$G3,k=1) 
+knnr2<-knn.reg(d1$age, y=d1$G3,k=1)
+d1$sex_num<-as.numeric(d1$sex)
+knnr3<-knn.reg(d1$sex_num, y=d1$G3, k =1)
+lines(knnr$pred, col="red", lwd=3)
+lines(knnr2$pred, col="blue", lwd=3)
+lines(knnr3$pred, col="violet", lwd= 3)
+##Not sure if we can do multiple predictors for KNN regression, also it only works for numerical data so we have to convert string variables into numeric to use them##
+
+##KNN Classification_________________________________________________________________________________##
+
+knnmod <- knn(d1$age, matrix(d1$age, ncol=1), cl=d1$gradesplit, k=1)
+table(knnmod, d1$gradesplit)
+168/nrow(d1)
+
+knnmod2 <- knn(d1$age+d1$absences, matrix(d1$age+d1$absences, ncol=1), cl=d1$gradesplit, k=1)
+table(knnmod2, d1$gradesplit)
+185/nrow(d1)
+
+
+
+##Regression Trees_________________________________________________________________________________##
+gradetree<-tree(G3~., data=numdata)
+cv.gradet<-cv.tree(gradetree)
+plot(cv.gradet, type ="b")
+cv.gradet
+p.gradetree <- prune.tree(gradetree, best=11)
+plot(p.gradetree)
+text(p.gradetree, pretty=0)
+summary(p.gradetree)
+p.gradetree
+##Calculate MSE For regression Tree##
+yhatree <- predict(p.gradetree, newdata=numtrain)
+MSEtree <- mean((yhatree-numtest)^2)
+MSEtree
+sqrt(MSEtree)
+
+par(mfrow=c(1,2))
+
+
+#Bagging/Random Forest________________________________________________________________________________#
+gradebag <- randomForest(G3~., data=numdata, mtry=42, importance=TRUE)
+gradebag
+varImpPlot(gradebag)
+yhatree <- predict(gradebag, newdata=numtrain)
+MSEtree <- mean((yhatree-numtest)^2)
+MSEtree
+sqrt(MSEtree)
+
+gradeRF<- randomForest(G3~., data=numdata, importance=TRUE)
+gradeRF
+yhatree <- predict(gradeRF, newdata=numtrain)
+MSEtree <- mean((yhatree-numtest)^2)
+MSEtree
+sqrt(MSEtree)
+
+par(mfrow=c(1,2))
+varImpPlot(gradebag)
+varImpPlot(gradeRF)
+
+##Boostrap(Estimate the accuracy of multiple regression)
+library(boot)
+dim(d1);##numOfColums==395
+library(Auto)
+boot.fn=function(data,index)
+  + return(coef(lm(G3~.,data=data,subset=index))) 
+boot.fn(d1,1:395)
+##Boostrap for estimating the intercept and slope terms
+set.seed(1)
+boot.fn(d1,sample(395,395,replace=T))
+boot.fn(d1,sample(395,395,replace=T))
+
+##estimate the standard erros of 1,000 boostrap estimates(boostrap gives a more accurate estimate of standdard erroes(p196))
+boot(d1,boot.fn,1000)
+##sumary using regression
+summary(lm(G3~.,data=d1))$coef
+
+#5)PCA
+secondData=myvars[-c(9:12)]#keep binary(dummy)variables remain and drop other categorical variables 
+secondData=na.omit(secondData)
+secondData=sapply(secondData,as.numeric)
+pr.out=prcomp(secondData,scale=TRUE)
+names(pr.out)
+dim(pr.out$x)
+biplot(pr.out,scale=0)
+pr.out$rotation=-pr.out$rotation
+pr.out$x=-pr.out$x
+biplot(pr.out,scale=0)
+pr.out$sdev
+pr.var=pr.out$sdev^2
+pve=pr.var/sum(pr.var)
+pve
+
+plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained ", ylim=c(0,1),type='b')
+##As can be seen fron PVE graph, the first few compoents don't explain the variance so mcuh....so PCA is not useful in this dataset 
+plot(cumsum(pve), xlab="Principal Component ", ylab=" Cumulative Proportion of Variance Explained ", ylim=c(0,1), type='b')
+##Kaiser-criterion
+ev <- pr.out$sdev^2
+# Plot eigenvalues and percentages of variation of an ordination object
+# Kaiser rule and broken stick model
+# Usage: evplot(ev) where ev is a vector of eigenvalues
+# License: GPL-2 # Author: Francois Gillet, 25 August 2012#http://www.davidzeleny.net/anadat-r/doku.php/en:numecolr:evplot
+
+evplot <- function(ev)
+{
+  # Broken stick model (MacArthur 1957)
+  n <- length(ev)
+  bsm <- data.frame(j=seq(1:n), p=0)
+  bsm$p[1] <- 1/n
+  for (i in 2:n) bsm$p[i] <- bsm$p[i-1] + (1/(n + 1 - i))
+  bsm$p <- 100*bsm$p/n
+  # Plot eigenvalues and % of variation for each axis
+  op <- par(mfrow=c(2,1))
+  barplot(ev, main="Eigenvalues", col="bisque", las=2)
+  abline(h=mean(ev), col="red")
+  legend("topright", "Average eigenvalue", lwd=1, col=2, bty="n")
+  barplot(t(cbind(100*ev/sum(ev), bsm$p[n:1])), beside=TRUE,
+          main="% variation", col=c("bisque",2), las=2)
+  legend("topright", c("% eigenvalue", "Broken stick model"),
+         pch=15, col=c("bisque",2), bty="n")
+  par(op)
+}
+evplot(ev)
+sum(ev>1)
+#As shown above, PCAs above red line(1) are first 4 which should be kept according to Kaiser criterion
+
+##KM-Clustering_____________________________________________________________________###
+
+##KM-Clustering on Sclaed data##
+attach(scldata)
+scldata$gradesplit[G3 > 10] <- "1"
+scldata$gradesplit[G3 <= 10] <- "0"
+detach(scldata)
+scldata$gradesplit<-as.numeric(scldata$gradesplit)
+
+set.seed(1)
+kmaths<-kmeans(scldata, 2)
+pairs(scldata[,-44], col=kmaths$cluster)
+table(d1$gradesplit, kmaths$cluster)
+301/nrow(d1)
+
+##KM Clustering on the Raw numeric Data##
+attach(numdata)
+scldata$gradesplit[G3 > 10] <- "1"
+scldata$gradesplit[G3 <= 10] <- "0"
+detach(numdata)
+numdata$gradesplit<-as.numeric(numdata$gradesplit)
+set.seed(1)
+
+
+kmaths<-kmeans(numdata, 2)
+pairs(numdata[,-44], col=kmaths$cluster)
+table(d1$gradesplit, kmaths$cluster)
+347/nrow(d1)
+
