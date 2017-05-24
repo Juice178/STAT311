@@ -1,0 +1,31 @@
+#Second data sets: reponse= (G3 is)the final year grade of secondary education;variables=33, observations=649;regression;http://archive.ics.uci.edu/ml/datasets/Student+Performance
+d1=read.table("student-mat.csv",sep=";",header=TRUE)
+d2=read.table("student-por.csv",sep=";",header=TRUE)
+mergedData=merge(d1,d2,by=c("school","sex","age","address","famsize","Pstatus","Medu","Fedu","Mjob","Fjob","reason","nursery","internet"))
+#This data approach student achievement in secondary education of two Portuguese schools.
+# The data attributes include student grades, demographic, social and school related features) 
+#and it was collected by using school reports and questionnaires. 
+#Two datasets are provided regarding the performance in two distinct subjects: Mathematics (mat) and Portuguese language (por). 
+#In [Cortez and Silva, 2008], the two datasets were modeled under binary/five-level classification and regression tasks.
+print(nrow(mergedData)) # 382 students
+names(mergedData)
+summary(mergedData)
+
+
+##Test mdoels for each data sets
+#1)Multiple regression 
+myvars=names(d1) %in% c("G1","G2" )##omit the 1st and 2nd period grades,make final garde as a target(response)
+newdata=d1[!myvars]
+lm.fit1=lm(G3~.,data=newdata)
+summary(lm.fit1)
+##Since sexM,failures,schoolsupyes,romanticyes and goout have significant p-value, use backward-selection
+lm.fit2=lm(G3~sex+failures+school+romantic+goout,data=newdata)
+options(scipen=999)
+summary(lm.fit2)
+lm.fit2=lm(G3~sex+failures+school+goout,data=newdata)#remove romantic
+summary(lm.fit2)
+lm.fit2=lm(G3~sex+failures+goout,data=newdata)#remove school
+summary(lm.fit2)## all of the variables have signifincat p-values
+names(lm.fit2)
+plot(lm.fit2)
+

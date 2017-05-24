@@ -1,0 +1,37 @@
+#3)HierarchicalClsutering
+myvars=remove.vars(d1,c("G1","G2","G3"),info=TRUE)##Remove responses(G1 ,G2,G3) from d1 data in oder to conduct unsupervised learning
+names(myvars)
+newmyvars=na.omit(myvars)
+ScaledData=model.matrix(~.+0,data=newmyvars)##Convert to categorical variables to numeric ones 
+
+hc.complete=hclust(dist(ScaledData), method="complete")
+plot(hc.complete,main="Complete Linkage", xlab="", sub="", cex =.9)##Unscaled data
+
+scaled=scale(ScaledData)##Scale data
+plot(hclust(dist(scaled), method="complete"), main="Hierarchical Clustering with Scaled Features ")##Scaled data
+
+
+##(Correlation-based distance)
+dd=as.dist(1-cor(t(scaled)))
+plot(hclust(dd, method="complete"), main="Complete Linkage
+  with Correlation -Based Distance", xlab="", sub="")
+  
+#5)PCA
+variables=row.names(d1)
+variables
+pr.out=prcomp(scaled,scale=TRUE)
+names(pr.out)
+dim(pr.out$x)
+biplot(pr.out,scale=0)
+pr.out$rotation=-pr.out$rotation
+pr.out$x=-pr.out$x
+biplot(pr.out,scale=0)
+pr.out$sdev
+pr.var=pr.out$sdev^2
+pve=pr.var/sum(pr.var)
+pve
+
+plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained ", ylim=c(0,1),type='b')
+##As can be seen fron PVE graph, the first few compoents don't explain the variance so mcuh....so PCA is not useful in this dataset 
+plot(cumsum(pve), xlab="Principal Component ", ylab=" Cumulative Proportion of Variance Explained ", ylim=c(0,1), type='b')
+
